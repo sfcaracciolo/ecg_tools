@@ -1,0 +1,10 @@
+.python-version
+.vscode/
+__pycache__/
+bin/
+include/
+lib64/
+lib64
+lib/
+*.egg-info
+pyvenv.cfg
