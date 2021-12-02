@@ -105,13 +105,15 @@ def bdr_median_filter(s: np.ndarray, size: int, in_place: bool = False) -> np.nd
     
     return y
 
-def beat_matrix(s: np.ndarray, r_pos: np.ndarray, window: int = 0, mode: str = 'manual') -> np.ndarray:
-    if mode == 'manual':
+def beat_matrix(s: np.ndarray, r_pos: np.ndarray, window: int = 0, mode = None) -> np.ndarray:
+    if mode == None:
         size = window
     else:
-        size = eval(f'np.{mode}(np.diff(r_pos))')
+        rr = np.diff(r_pos)
+        # size = eval(f'np.{mode}(rr)')
+        size = mode(rr)
 
-    beats, _ = utils.sliding_window_from_centers(s, r_pos, size)
+    beats, _, _ = utils.sliding_window_from_centers(s, r_pos, size)
     return beats
 
 def isoline_correction(s: np.ndarray, limits: tuple = (0, None), engine: str = 'scipy', bins: int = 10, in_place: bool = False) -> np.ndarray:
