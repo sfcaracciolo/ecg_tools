@@ -1,9 +1,13 @@
 import numpy as np
 import scipy as sp
-from scipy import ndimage, stats
-from . import utils
 
 # all functions get signals by column in C order.
+
+def low_pass(input: np.ndarray, order: int, fc: float, fs: float) -> np.ndarray :
+    x = np.arange(input.size) / fs
+    sos = sp.signal.butter(order, fc, fs=fs, btype='lowpass', analog=False, output='sos')
+    y = sp.signal.sosfiltfilt(sos, input)
+    return x, y
 
 # def moving_average_filter(s: np.ndarray, size: int, in_place: bool = False) -> np.ndarray:
 #     """
@@ -22,7 +26,7 @@ from . import utils
 
 #     return y
 
-def nonlinear_adaptative_notch_filter(s: np.ndarray, alpha: float = 10., f0: float = 50., fs: int = 1024, unit=1.) -> np.ndarray:
+def adaptative_notch(s: np.ndarray, alpha: float = 10., f0: float = 50., fs: int = 1024, unit=1.) -> np.ndarray:
     """
     Nonlinear PLI filter implemented from Laguna book (page 476) which is un adaption to [1]
     
@@ -201,3 +205,11 @@ def bdr_spline_filter(s: np.ndarray, fiducials: np.ndarray, size: int = 0, order
         y += s
 
     return y
+
+def sliding_window_from_centers(s: np.ndarray, centers: np.ndarray, size: int) -> tuple:
+    matrix_rows = s.size - size + 1
+    onsets = np.mod(centers - size // 2, matrix_rows)
+    mask = (onsets >= 0) & (onsets <= s.size - size)
+    filter = np.logical_not(mask)
+    matrix = np.lib.stride_tricks.sliding_window_view(s, size)[onsets, :]
+    return matrix, onsets, filter
