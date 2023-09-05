@@ -8,3 +8,7 @@ lib64
 lib/
 *.egg-info
 pyvenv.cfg
+Scripts/
+etc/
+data/
+share/
