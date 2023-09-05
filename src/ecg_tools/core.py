@@ -1,215 +1,87 @@
+from typing import Literal
 import numpy as np
 import scipy as sp
 
-# all functions get signals by column in C order.
+def time(x: np.ndarray, fs: float):
+    return np.arange(x.size) / fs
 
-def low_pass(input: np.ndarray, order: int, fc: float, fs: float) -> np.ndarray :
-    x = np.arange(input.size) / fs
+def lowpass_filter(x: np.ndarray, order: int, fc: float, fs: float) -> np.ndarray :
     sos = sp.signal.butter(order, fc, fs=fs, btype='lowpass', analog=False, output='sos')
-    y = sp.signal.sosfiltfilt(sos, input)
-    return x, y
+    return sp.signal.sosfiltfilt(sos, x)
 
-# def moving_average_filter(s: np.ndarray, size: int, in_place: bool = False) -> np.ndarray:
-#     """
-#     Moving average filter.
-    
-#     s: signal to apply moving average.
-#     size: window size of the filter.
-#     """
-#     w = np.ones(size, dtype=np.float32)
-#     y = np.convolve(s, w, mode = 'same')
-#     y /= size
+def highpass_filter(x: np.ndarray, order: int, fc: float, fs: float) -> np.ndarray :
+    sos = sp.signal.butter(order, fc, fs=fs, btype='highpass', analog=False, output='sos')
+    return sp.signal.sosfiltfilt(sos, x)
 
-#     if in_place:
-#         s[:] = y
-#         y = s
+def notch_filter(x: np.ndarray, order: int, fc: float, fs: float, bw: float) -> np.ndarray:
+    f1, f2 = fc - bw/2., fc + bw/2.
+    sos = sp.signal.butter(order, (f1, f2), fs=fs, btype='bandstop', analog=False, output='sos')
+    return sp.signal.sosfiltfilt(sos, x)
 
-#     return y
+def median_filter(x: np.ndarray, size: int, return_baseline: bool = False) -> np.ndarray:
+    baseline = sp.ndimage.median_filter(x, size=size)
+    return baseline if return_baseline else x - baseline
 
-def adaptative_notch(s: np.ndarray, alpha: float = 10., f0: float = 50., fs: int = 1024, unit=1.) -> np.ndarray:
+def spline_filter(x: np.ndarray, fiducials: np.ndarray, size: int = 0, order: int = 3, return_baseline: bool = False) -> np.ndarray:
+    windows, onsets = sliding_window(x, fiducials, size, roll=False)
+    medians = np.quantile(windows, .5, axis=1, method='closest_observation')[:, np.newaxis]
+    ixs_med = np.argwhere(windows == medians)
+    _, ixs = np.unique(ixs_med[:,0], return_index=True)
+    j = ixs_med[ixs, 1] + onsets
+    t = np.arange(x.size)
+    baseline = sp.interpolate.UnivariateSpline(j, x[j], k=order, s=0, ext='extrapolate')(t)
+    return baseline if return_baseline else x - baseline
+
+def isoline_correction(x: np.ndarray, engine: Literal['numpy', 'scipy'] = 'scipy', bins: int = 10, return_isoline: bool = False) -> np.ndarray:
+    if engine == 'scipy':
+        isoline = sp.stats.mode(x, axis=0, nan_policy='raise').mode
+    elif engine == 'numpy':
+        hist, bin_edges = np.histogram(x, bins=bins)
+        isoline = bin_edges[hist.argmax()]
+    return isoline if return_isoline else x - isoline
+
+def adapt_notch_filter(x: np.ndarray, fs: float, f0: float = 50., alpha: float = 10e-6, return_adapt: bool = False) -> np.ndarray:
     """
     Nonlinear PLI filter implemented from Laguna book (page 476) which is un adaption to [1]
-    
-    s: signal to remove PLI in uV.
-    alpha: rate in uV
-    fs: sampling frequency
-    f0: frequency to adapt
-    unit: scale of s to uV
-
-    [1] P. S. Hamilton, "60Hz filtering for ECG signals: to adapt or not to adapt?," Proceedings of the 15th Annual International Conference of the IEEE Engineering in Medicine and Biology        Societ, 1993, pp. 779-780, doi: 10.1109/IEMBS.1993.978829.
+    [1] P. S. Hamilton, "60Hz filtering for ECG signals: to adapt or not to adapt?,"
     """
-    s = s[:, np.newaxis] if s.ndim == 1 else s
-    _, m = s.shape
-    y = np.empty_like(s)
     N = 2*np.cos(2*np.pi*f0/fs)
+    v = np.zeros_like(x)
+    e = np.zeros_like(x)
+    v1, v2, e1 = 0., 0., 0.
 
-    v2 = np.zeros(m, dtype=np.float32)
-    v1 = np.zeros(m, dtype=np.float32)
-    x1 = np.zeros(m, dtype=np.float32)
-    v = np.zeros(m, dtype=np.float32)
-    x = np.zeros(m, dtype=np.float32)
-    ep = np.zeros(m, dtype=np.float32)
+    for i in range(x.size):
 
-    # it = np.nditer(s, flags=['external_loop'], order='C')
-    index = 0
+        v[i] = N*v1 - v2
+        e[i] = x[i] - v[i]
+        dei = e[i] - e1 
+        v[i] += alpha * np.sign(dei)
 
-    for z in s:
-        # x[:] = unit*z
-        x[:] = z
-        x *= unit
-        # v = N*v1 - v2 + 1.
-        v[:] = v1
-        v *= N
-        v -= v2
-        v += 1
-        # ep = (x - x1) - (v - v1)
-        ep[:] = x
-        ep -= x1
-        ep += v1
-        ep -= v
-        # v += alpha*np.sign(ep) 
-        np.sign(ep, out=ep)
-        ep *= alpha
-        v += ep
-        # y[i] = x - v
-        yi = y[index, :]
-        yi[:] = x
-        yi -= v
+        v2 = v1
+        v1 = v[i]
+        e1 = e[i]   
 
-        v2[:] = v1
-        v1[:] = v
-        x1[:] = x
-        index += 1
+    return v if return_adapt else e
 
-    y /= unit
-    return y
-
-def bdr_median_filter(s: np.ndarray, size: int, in_place: bool = False) -> np.ndarray:
+def average_filter(x: np.ndarray, size: int) -> np.ndarray:
     """
-    Baseline drift removal filter based on median filter. Recomendations: size should be near to RR duration.
+    Moving average filter.
     
-    s: signal to remove baseline.
-    size: window size of median filter.
+    x: signal to apply moving average.
+    size: window size of the filter.
     """
+    w = np.full(size, 1./size, dtype=np.float32)
+    return np.convolve(x, w, mode = 'same')
 
-    s = s[:, np.newaxis] if s.ndim == 1 else s
-    y = np.empty_like(s)
-    it = np.nditer(s, flags=['external_loop'], order='F')
-
-    index = 0
-    for z in it:
-        sp.ndimage.median_filter(z, size=size, output=y[:, index])
-        index += 1
-
-    if in_place:
-        s -= y
-        y = s
-    else:
-        y[:] = s - y
-    
-    return y
-
-def beat_matrix(s: np.ndarray, r_pos: np.ndarray, window: int = 0, mode = None) -> np.ndarray:
-    if mode == None:
-        size = window
-    else:
-        rr = np.diff(r_pos)
-        # size = eval(f'np.{mode}(rr)')
-        size = mode(rr)
-
-    beats, _, _ = utils.sliding_window_from_centers(s, r_pos, size)
+def beat_matrix(x: np.ndarray, r_pos: np.ndarray, size: int, **kwargs) -> np.ndarray:
+    beats, _, = sliding_window(x, r_pos, size, **kwargs)
     return beats
 
-def isoline_correction(s: np.ndarray, limits: tuple = (0, None), engine: str = 'scipy', bins: int = 10, in_place: bool = False) -> np.ndarray:
-    """
-    Isoline correction remove the offset based on stat mode in order to set the isoline to 0 V. 
-    
-    s: signal to remove the offset.
-    limits: range of s where the offset is computed. Useful to avoid side effects. Example: (5, 10) dischard the first five samples and the last ten
-    engine: can be scipy or numpy. Define what library use to compute the mode.
-    bins: works when engine is numpy. Define amount of bins to the mode estimation.
-    """
-    s = s[:, np.newaxis] if s.ndim == 1 else s
-    _, m = s.shape
-    iso = np.empty((1,m), dtype=np.float32)
-    start, stop = limits
-    stop = -stop if stop is not None else None
-
-    s_view = s[start:stop,:]
-    it = np.nditer(s_view, flags=['external_loop'], order='F')
-
-    if engine == 'scipy':
-        # scipy version
-        iso[:] = sp.stats.mode(s_view, axis=0, nan_policy='raise').mode
-    elif engine == 'numpy':
-        # numpy version
-        index = 0
-        for z in it:
-            hist, bin_edges = np.histogram(z, bins=bins)
-            iso[0, index] = bin_edges[hist.argmax()]
-            index += 1
-    else:
-        raise ValueError('engine does not exist.')
-
-    if in_place:
-        s -= iso
-        y = s
-    else:
-        y = s - iso
-    
-    return y
-
-def bdr_spline_filter(s: np.ndarray, fiducials: np.ndarray, size: int = 0, order: int = 3, in_place: bool = False) -> np.ndarray:
-    """
-    Baseline drift removal filter based on spline filter.
-    
-    s: signal to remove baseline.
-    fiducials: array with PQ or TP fiducials points where isolectric is defined. Unit: samples.
-    size: window size around fiducials where the isoelectric is searched.
-    order: spline order.
-    """
-
-        
-    s = s[:, np.newaxis] if s.ndim == 1 else s
-    n, m = s.shape
-
-    fiducials = fiducials[:, np.newaxis] if fiducials.ndim == 1 else fiducials
-    i, j = fiducials.shape
-    fiducials = np.broadcast_to(fiducials, (i, m)) if (m > 1) and (j == 1) else fiducials
-
-    y = np.empty_like(s)
-    it = np.nditer(s, flags=['external_loop'], order='F')
-    t = np.arange(n)
-
-    index = 0
-    for z in it:
-        windows, onsets = utils.sliding_window_from_centers(z, fiducials[:,index], size)
-        medians = np.quantile(windows, .5, axis=1, interpolation='nearest')[:, np.newaxis]
-        ixs = np.argwhere(windows == medians)[:, 1]
-        ixs += onsets
-
-        y[:,index] = sp.interpolate.UnivariateSpline(
-            ixs,
-            z[ixs],
-            k=order,
-            s=0,
-            ext='extrapolate'
-        )(t)
-        index += 1
-
-    if in_place:
-        s -= y
-        y = s
-    else:
-        y *= -1.
-        y += s
-
-    return y
-
-def sliding_window_from_centers(s: np.ndarray, centers: np.ndarray, size: int) -> tuple:
-    matrix_rows = s.size - size + 1
+def sliding_window(x: np.ndarray, centers: np.ndarray, size: int, roll: bool = False) -> tuple:
+    matrix_rows = x.size - size + 1
     onsets = np.mod(centers - size // 2, matrix_rows)
-    mask = (onsets >= 0) & (onsets <= s.size - size)
-    filter = np.logical_not(mask)
-    matrix = np.lib.stride_tricks.sliding_window_view(s, size)[onsets, :]
-    return matrix, onsets, filter
+    matrix = np.lib.stride_tricks.sliding_window_view(x, size)[onsets, :]
+    if roll:
+        mask = (onsets >= 0) & (onsets <= x.size - size)
+        matrix = matrix[mask]
+    return matrix, onsets
