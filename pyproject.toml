@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ecg_tools"
+version = "0.0.1"
+authors = [
+  { name="Santiago Federico Caracciolo", email="santiago.caracciolo@gmail.com" },
+]
+description = "Common preprocessing methods for ECG"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "scipy"
+]
