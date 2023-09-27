@@ -22,7 +22,7 @@ def median_filter(x: np.ndarray, size: int, return_baseline: bool = False) -> np
     baseline = sp.ndimage.median_filter(x, size=size)
     return baseline if return_baseline else x - baseline
 
-def spline_filter(x: np.ndarray, fiducials: np.ndarray, size: int = 0, order: int = 3, return_baseline: bool = False) -> np.ndarray:
+def splines_filter(x: np.ndarray, fiducials: np.ndarray, size: int = 0, order: int = 3, return_baseline: bool = False) -> np.ndarray:
     windows, onsets = sliding_window(x, fiducials, size, roll=False)
     medians = np.quantile(windows, .5, axis=1, method='closest_observation')[:, np.newaxis]
     ixs_med = np.argwhere(windows == medians)

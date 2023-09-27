@@ -52,7 +52,7 @@ ecg_tools.median_filter(
 <img src="figs/baseline_median.png" alt="drawing" width=""/>
 
 ```python
-ecg_tools.spline_filter(
+ecg_tools.splines_filter(
     x, # input ecg
     fiducials, # TP/PQ delineation
     size, # window size of fiducial finder,

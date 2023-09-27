@@ -1,6 +1,6 @@
 import wfdb 
 import matplotlib.pyplot as plt 
-from src.ecg_tools import highpass_filter, median_filter, spline_filter, time
+from src.ecg_tools import highpass_filter, median_filter, splines_filter, time
 from pathlib import Path
 import numpy as np 
 filename = Path(__file__).stem
@@ -14,7 +14,7 @@ t = time(ecg, rc.fs)
 cases = (
     ['Highpass', lambda x: highpass_filter(x, 4, .5, rc.fs)],
     ['Median', lambda x: median_filter(x, 640)],
-    ['Spline', lambda x: spline_filter(x, pqs, size=5, order=3)]
+    ['Spline', lambda x: splines_filter(x, pqs, size=5, order=3)]
 )
 
 for label, fun in cases:
