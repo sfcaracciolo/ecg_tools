@@ -70,7 +70,7 @@ def average_filter(x: np.ndarray, size: int) -> np.ndarray:
     x: signal to apply moving average.
     size: window size of the filter.
     """
-    w = np.full(size, 1./size, dtype=np.float32)
+    w = np.full(size, 1./size)
     return np.convolve(x, w, mode = 'same')
 
 def beat_matrix(x: np.ndarray, r_pos: np.ndarray, size: int, **kwargs) -> np.ndarray:
